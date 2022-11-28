@@ -1,0 +1,144 @@
+Unified Data Integration
+
+Scope:
+	Scope of this Tool (or) Framework is to ingest data from various SOURCES like [MS SQL SERVER, ORACLE, TERRADATA, MONGODB, File Storages (Blob, ADLS [GEN1-GEN2])] and transfer to Azure Data Lake. This is totally a config driven framework which allows users to configure the required details into CSV file notation.
+	This Framework has the following tech stack such as Azure Data Factory, Azure Databricks, Azure Blob-Storage, Azure SQL Server and Azure Data Lake Storage [ADLS – GEN2]. As mentioned earlier , it supports data loading based on most of the Industry standard and approved RDBMS systems.
+Prerequisites :
+-	Source Connection String Details
+o	Host Name
+o	Port
+o	Database
+o	Schema
+o	List of Tables
+-	Azure Blob Storage
+-	Azure Data Lake Storage [GEN2]
+-	Azure Databricks
+-	Azure Key Vault
+-	Azure Data Factory
+-	Azure SQL Database
+-	GitHub [Source Control]
+-	ADO Project [CI/CD Pipeline]
+ 
+Technical Architecture:
+
+
+Data Sources:
+	The actual location where source data is located [OLTP – Online Transaction Processing System] Usually in real world use case , we will have this OLTP  connected with front end applications where the data is generated.
+	Typical examples are Online Banking webpage. It is hosted on front end Application such as a typical webpage and all the backend data is stored into RDBMS systems such as Microsoft SQL Server, Oracle (or) Teradata databases.
+
+Self-Hosted Integaration runtime:
+	A Self Hosted Integration Runtime is a service that is hosted on the Virtual Machine [VM] and configured in Azure Data Factory to pull data from any Non-Cloud Environment such as any RDMS services.
+	It is important to setup & configure this in Azure Data Factory before creating linked service to the RDBMS system. Please read more about Self Hosted IR service.
+
+
+
+ETL (or) ELT:
+	This is nothing but a OLAP (Online Analytical Processing System), which is capable of processing Huge (massive i.e. petabyte size of data) amount of data.
+	This has various components involved to perform different set of operations such as listed below.
+Azure Data Factory: – Workflow Orchestration & Scheduling & Monitoring Jobs
+Azure Databricks: – An interactive workspace which is used to process massive amount of data using parallel processing (Spark Engine) and capable of scale vertically (Add machines) & Horizontally (increase size like RAM, CPU & ROM)
+Azure Blob Storage: - Used to store the information of the configuration , which is required for the job (in Architecture Config files and metadata)
+Azure Key Vault: - Used to securely store the credentials such as Connection String (RDBMS), Access Keys & SaaS tokens (Blob Storage), APP-ID & APP-Secrets and etc.
+ADLS [GEN-2]: - Used to Store processed data and create common data lake architecture. All the different data layers such as Raw, Refined, Foundation & Analytics & etc. will be created here according to the requirement.
+Azure SQL Database: - According to user requirement few datasets will be pushed to SQL DB for third party services and other analytic use cases. This is an optional step and might not applicable for all the use cases.
+Consumption:
+All the User Visualization and Measurement dashboards will be hosted on Data Virtualization tools such as PowerBI, Qlick Sense, Tableau and etc.
+DevOps [CICD]:
+The entire application needs to be configurable and easy lift and shiftable into high environment. In order to achieve this, we are using GitHub (source Control) where all our code block will be hosted and  Organization standard github workflow practice is followed to promote code block from feature branch to collaboration(dev)/Release/Master branches and accordingly the deliverables will be deployed to its relative environments.
+-	Collaboration -> Dev environment
+-	Release -> UAT/PRE-PROF environment
+-	Master -> Production Environment
+ 
+Data Flow:
+ Data Layer:
+	Raw:- This is the place where we keep a copy of source data without any modification. All the datasets pulled from various source will be loaded in to this layer. This layer will save data in Parquet file format and all the tables partitioned load according to date. Retention period for this layer is 180 days.
+	Refined:- This is the place where we keep cleansed data. The data in this layer has completed below set of operations
+o	Null Handling
+o	Empty String Handling
+o	Remove Primary Key Duplicates
+o	Remove Full Row Duplicates
+o	Transform Datetime column to ISO standard format
+Foundation:- This layer will keep Active and Inactive records, we follow SCD Type-2 transaction using delta file format (delta table). This  contain  final set of tables, which then used for different analytical use cases across multiple business streams.
+Analytics:- This layer will have all the Fact & Dimension tables which is transformed according to business use case. Each Business process will have its own path to separate their data out of other use cases.
+ 
+Process Workflow:
+The workflow explains the components involved in Technical Architecture based on the work explained in Data Flow.
+Since this is Config driven framework everything depends on config files. The config folder in blob storage contains listed config file information and it follows the folder structure. Please find the attached configs for your reference.
+
+1.	Job Config:
+Job Config contains the workflow related information such as the Table name, database Name, job type and attributes listed below.
+o	SrcDataBaseName – Specifies Source Database
+o	SrcSchema – Specifies Source Schema
+o	SrcTableName – Specifies Source Table Name
+o	LoadType – Specifies Whether it is full (or) incremental load
+o	TargetTableName – Specifies Name of the target table
+o	PrimaryKeys – Specifies list of key columns used to perform merge [upsert] operation.
+o	TimeStampColumns – Specifies key columns used to identify New/Update records from source since last refresh.
+o	IsActive – Specifies whether the item is active and can be loaded via daily job.
+
+2.	Table Config:
+This File contains all the table related information such as all the columns required to create the table.
+
+Meta-Data Creation:
+We will create required database/tables [Databricks] & ADLS locations [raw/enriched/foundation] using a Separate job which we have created in ADF pipeline. This pipeline reads job’s config & table’s config , from config path [blob storage location] and create the target deliverables. Dynamic Schema evolution is controlled in our pipeline.
+
+Pipeline Building:
+	We create ADF pipelines to ingest data from various sources into our datalake . We follow below process in order to create new pipeline.
+1.	IR [Integration Runtime] Creation:
+a.	Since our pipeline connects and pulls data from sources outside cloud environment, In order to connect with the source , we need to create IR service first.
+b.	This IR can be scale up later at any point of time.
+
+2.	Linked Service Creation:
+All the required linked services will be created first and for  the most of the linked services creation will be before starting the development. In our case the required linked services are
+a.	Microsoft SQL Server – Connects to source and pulls data.
+b.	Azure Blob Storage – Used to host the config files and log tables.
+c.	Azure GEN-2 Storage – Target location , where data lake [raw/refined/foundation/analytics] is created.
+d.	Azure DataBricks – Executes jobs after raw area.
+e.	Azure Key Vault – Used to host all the connection string information. Here we will store information for SQL Server [Connection string], Blob Storage [Access Key (or) SAS Key], GEN-2 [Service Principal and App Secret], Databricks [Access Token, Cluster-Id and etc.]
+
+3.	Data Sets:
+Create datasets that used to connect with Source (to read the data) and target (to write the data), This dataset is mainly used for Copy, Lookup etc. in ADF.
+In this case we need to create one parameterized Dataset which helps us to connect with Source and read data based on the given parameter such as Database & Table name.
+We need to create one more parameterized dataset which help us to connect with Target ADLS location and write data in date wise partition based on given parameters such as Container Name, File Path & File Name.
+These two dataset will be entirely used to read and write data from various source into RAW data lake.
+Apart from this we need to create one more dataset which will allow us to read config files from BLOB location.
+Note: we don’t need any datasets for Azure Databricks Pipeline Activity, it directly connects with Azure Databricks Linked service.
+
+ 
+4.	Pipelines:
+We create an  Ingestion pipeline which follows below listed action in a sequence. [Note : Please create child pipelines based on the program logic and according to process needs]
+-	[LOOKUP Activity] - Read Job Config csv file
+-	[FILTER Activity] - Filter Active Tables
+-	[FOR Activity] – Iterate each table
+-	[IF CODITION Activity] – Check if table Load Type is full (or) incremental. (RAW Loading)
+-	IF – FULL:
+o	[SET VARIABLE Activity] – Generate target folder path for RAW area like shown
+[/raw/Store Master/2022/10/08/1015/]
+[/container Name /Table Name/Year/Month/Date/Hour & Minute]
+o	[COPY Activity] – Copy data from Source to Target (select Table)
+-	IF – INCR:
+o	[SET VARIABLE Activity] – Generate target folder path for RAW area like shown
+[/raw/Store Master/2022/10/08/1015/]
+[/container Name/Table Name/Year/Month/Date/ Hour & Minute]
+o	[DATABRICKS NOTEBOOK Activity] – Run Databricks notebook activity to get the last run date [Create Date/Update Date] from enriched area and return the date.
+o	[SET VARIBALE Activity] – Prepare SQL Query dynamically where it will be used in next copy activity to fetch incremental data from source
+o	[COPY Activity] – Copy data from Source to Target (Select Query)
+-	[DATABRICKS NOTEBOOK Activity] – Execute databricks notebook by passing input parameters like Target Table Name, Load Type, Load Date (use now() function in ADF dynamic parameter), primary key columns and etc. (Enriched Loading)
+o	Read Input Parameters
+o	Read Source Table as Dataframe from RAW area.
+o	Check Load Type
+	IF-FULL:
+•	overwrite Enriched Area with RAW table.
+	IF-INCR:
+•	Read Target table as delta table.
+•	Perform upserts using primary key columns provided.
+-	[DATABRICKS NOTEBOOK Activity] – Execute databricks notebook by passing input parameters like Target Table Name, Load Type, Load Date (use now() function in ADF dynamic parameter), primary key columns and etc. (Foundation Loading)
+o	Read Input Parameters
+o	Read Source Table as Dataframe from Enriched area.
+o	Read Target Table as Dataframe from Foundation area.
+o	IF- Valid Record:
+	Write it to Active table in foundation
+o	IF – Inactive:
+	Write to In-Active table in Foundation and delete the record from active table.
+-	[DATABIRCKS NOTEBOOK Activity] – Execute databricks notebook activity to run data Recon from Source -> RAW -> ENRICHED -> FOUNDATION (Active & Inactive), make sure that data loss is minimal like <= 1-2%
+o	Data Recon is just a row count comparison between all the layers involved in the architecture to make sure that no data was missed or ignored
